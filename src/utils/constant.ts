@@ -1,1 +1,1 @@
-export const BACKEND = "http://192.168.0.125:8000";
+export const BACKEND = "https://chat-app-backend-onhn.onrender.com";

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import axios from "axios";
 import { ListOfUser, Message } from "./utils/interface";
@@ -25,7 +25,7 @@ const App = () => {
     const onDisconnect = () => setIsConnected(true);
 
     const onMessageReceive = (value: Message) => {
-      console.log(value);
+      scrollTopBottomForMessages();
       setMessages((previous) => [...previous, value]);
     };
 
@@ -48,20 +48,49 @@ const App = () => {
     [setMessageContent]
   );
 
-  const sendMessage = useCallback(() => {
-    if (messageContent && userId) {
-      const payload = {
-        message: messageContent,
-        from: userId,
-        to: sender._id,
-        sendAll: joinedRoom,
-      };
-      setMessages((pre) => [...pre, { ...payload, sendByYou: true }]);
-      socket.emit("send_message", payload);
-      setMessageContent("");
-      setError("");
-    } else setError("Message is missing");
-  }, [messageContent, userId, sender, joinedRoom]);
+  const scrollTopBottomForMessages = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      setTimeout(() => {
+        const elem = document.querySelector("#messageContainer");
+        if (elem) {
+          elem.scrollTo({
+            top: elem.scrollHeight,
+            behavior,
+          });
+        }
+      }, 50);
+    },
+    []
+  );
+
+  const sendMessage = useCallback(
+    (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+
+      if (messageContent && userId) {
+        const payload = {
+          message: messageContent,
+          from: userId,
+          to: sender._id ?? null,
+          sendAll: joinedRoom,
+        };
+        setMessages((pre) => [...pre, { ...payload, sendByYou: true }]);
+        socket.emit("send_message", payload);
+        setMessageContent("");
+        setError("");
+
+        scrollTopBottomForMessages();
+      } else setError("Message is missing");
+    },
+    [
+      messageContent,
+      userId,
+      sender._id,
+      joinedRoom,
+      scrollTopBottomForMessages,
+      setMessages,
+    ]
+  );
 
   const onLogin = useCallback(async () => {
     const apiResponse = await axios.post(`${BACKEND}/sign`, {
@@ -87,208 +116,226 @@ const App = () => {
       setMessages(getResponse.data?.data ?? []);
       const senderDetails = listOfUser.find((item) => item._id === payload);
       if (senderDetails) setSender(senderDetails);
+
+      scrollTopBottomForMessages("instant");
     },
-    [userId, listOfUser]
+    [userId, listOfUser, scrollTopBottomForMessages]
   );
 
   return (
     <div
       style={{
-        fontFamily: "Arial, sans-serif",
-        padding: "20px",
+        height: "100vh",
         backgroundColor: "#f0f0f0",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      <h1
+      <div
         style={{
-          textAlign: "center",
-          marginBottom: "20px",
           fontFamily: "Arial, sans-serif",
-          fontSize: "24px",
-          fontWeight: "bold",
+          padding: "20px",
+          flex: "1", // Occupy remaining vertical space
         }}
       >
-        {sender._id ? (
-          `Connected with: ${sender.userName}`
-        ) : joinedRoom ? (
-          <div
-            style={{
-              backgroundColor: "#f0f0f0",
-              padding: "10px",
-              borderRadius: "5px",
-              marginBottom: "10px",
-            }}
-          >
-            <strong>Joined room chat with random person</strong>
-            <small style={{ display: "block", color: "#666" }}>
-              (Don't worry your chat will not save in room mode)
-            </small>
-          </div>
-        ) : (
-          `Socket Health: ${isConnected ? "Connected" : "Disconnected"}`
-        )}
-      </h1>
-
-      <small style={{ color: "red", display: "block", marginBottom: "10px" }}>
-        {error}
-      </small>
-
-      <Messages messages={messages} joinedRoom={joinedRoom} />
-      {userId ? (
-        <>
-          {!sender._id && !joinedRoom ? (
+        <h1
+          style={{
+            textAlign: "center",
+            marginBottom: "20px",
+            fontFamily: "Arial, sans-serif",
+            fontSize: "24px",
+            fontWeight: "bold",
+          }}
+        >
+          {sender._id ? (
+            `Connected with: ${sender.userName}`
+          ) : joinedRoom ? (
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center", // Center horizontally
-                marginBottom: "20px",
+                backgroundColor: "#f0f0f0",
+                padding: "10px",
+                borderRadius: "5px",
+                marginBottom: "10px",
               }}
             >
-              <select
-                onChange={(e) => onSelectSender(e.target.value)}
-                value={sender._id}
-                style={{
-                  padding: "8px",
-                  marginRight: "10px",
-                  width: "150px", // Reduced width
-                  fontSize: "16px",
-                }}
-              >
-                <option value="" style={{ fontSize: "16px", height: "40px" }}>
-                  Select a user
-                </option>
-                {listOfUser.map((option, index) => (
-                  <option
-                    key={index}
-                    value={option._id}
-                    style={{ fontSize: "16px", height: "40px" }}
-                  >
-                    {option.userName}
-                  </option>
-                ))}
-              </select>
+              <strong>Joined room chat with random person</strong>
+              <small style={{ display: "block", color: "#666" }}>
+                (Don't worry your chat will not save in room mode)
+              </small>
+            </div>
+          ) : (
+            `Socket Health: ${isConnected ? "Connected" : "Disconnected"}`
+          )}
+        </h1>
+
+        <small style={{ color: "red", display: "block", marginBottom: "10px" }}>
+          {error}
+        </small>
+
+        {(joinedRoom || sender._id !== "") && (
+          <Messages messages={messages} joinedRoom={joinedRoom} />
+        )}
+        {userId ? (
+          <>
+            {!sender._id && !joinedRoom ? (
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  fontSize: "16px",
-                  fontWeight: "bold",
-                  marginRight: "10px",
+                  justifyContent: "center", // Center horizontally
+                  marginBottom: "20px",
                 }}
               >
-                OR
+                <select
+                  onChange={(e) => onSelectSender(e.target.value)}
+                  value={sender._id}
+                  style={{
+                    padding: "8px",
+                    marginRight: "10px",
+                    width: "150px", // Reduced width
+                    fontSize: "16px",
+                  }}
+                >
+                  <option value="" style={{ fontSize: "16px", height: "40px" }}>
+                    Select a user
+                  </option>
+                  {listOfUser.map((option, index) => (
+                    <option
+                      key={index}
+                      value={option._id}
+                      style={{ fontSize: "16px", height: "40px" }}
+                    >
+                      {option.userName}
+                    </option>
+                  ))}
+                </select>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: "16px",
+                    fontWeight: "bold",
+                    marginRight: "10px",
+                  }}
+                >
+                  OR
+                </div>
+                <button
+                  onClick={() => setJoinedRoom(true)}
+                  style={{
+                    padding: "10px 20px",
+                    backgroundColor: "#007bff",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Join Room
+                </button>
               </div>
-              <button
-                onClick={() => setJoinedRoom(true)}
+            ) : (
+              <form
                 style={{
-                  padding: "10px 20px",
-                  backgroundColor: "#007bff",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "5px",
-                  cursor: "pointer",
+                  marginBottom: "20px",
+                  display: "flex",
+                  alignItems: "center",
+                  position: "absolute",
+                  bottom: 0,
+                  width: "95%",
                 }}
+                className="messageContainer"
+                onSubmit={sendMessage}
               >
-                Join Room
-              </button>
-            </div>
-          ) : (
-            <div
+                <input
+                  name="message"
+                  placeholder="Enter message"
+                  onChange={(e) => setMessage(e)}
+                  value={messageContent}
+                  style={{
+                    padding: "10px",
+                    marginRight: "10px",
+                    flex: "1",
+                    border: "2px solid #007bff",
+                    borderRadius: "8px",
+                    fontSize: "16px",
+                    color: "#333",
+                    outline: "none",
+                    transition: "border-color 0.3s",
+                  }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    padding: "12px 25px",
+                    backgroundColor: "#007bff",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Submit
+                </button>
+              </form>
+            )}
+          </>
+        ) : (
+          <div>
+            <input
+              autoFocus
+              name="userName"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="Enter your user name"
               style={{
-                marginBottom: "20px",
-                display: "flex",
-                alignItems: "center",
+                padding: "10px",
+                marginBottom: "10px",
+                width: "100%",
+                boxSizing: "border-box",
+                border: "2px solid #007bff",
+                borderRadius: "8px",
+                fontSize: "16px",
+                color: "#333",
+                outline: "none",
+                transition: "border-color 0.3s",
+              }}
+            />
+            <input
+              name="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              type="password"
+              style={{
+                padding: "10px",
+                marginBottom: "10px",
+                width: "100%",
+                boxSizing: "border-box",
+                border: "2px solid #007bff",
+                borderRadius: "8px",
+                fontSize: "16px",
+                color: "#333",
+                outline: "none",
+                transition: "border-color 0.3s",
+              }}
+            />
+            <button
+              onClick={() => userName && password && onLogin()}
+              style={{
+                padding: "12px 25px",
+                backgroundColor: "#007bff",
+                color: "#fff",
+                border: "none",
+                borderRadius: "5px",
+                cursor: "pointer",
               }}
             >
-              <input
-                name="message"
-                placeholder="Enter message"
-                onChange={(e) => setMessage(e)}
-                value={messageContent}
-                style={{
-                  padding: "10px",
-                  marginRight: "10px",
-                  flex: "1",
-                  border: "2px solid #007bff",
-                  borderRadius: "8px",
-                  fontSize: "16px",
-                  color: "#333",
-                  outline: "none",
-                  transition: "border-color 0.3s",
-                }}
-              />
-              <button
-                onClick={sendMessage}
-                style={{
-                  padding: "12px 25px",
-                  backgroundColor: "#007bff",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                }}
-              >
-                Submit
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div>
-          <input
-            autoFocus
-            name="userName"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            placeholder="Enter your user name"
-            style={{
-              padding: "10px",
-              marginBottom: "10px",
-              width: "100%",
-              boxSizing: "border-box",
-              border: "2px solid #007bff",
-              borderRadius: "8px",
-              fontSize: "16px",
-              color: "#333",
-              outline: "none",
-              transition: "border-color 0.3s",
-            }}
-          />
-          <input
-            name="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            type="password"
-            style={{
-              padding: "10px",
-              marginBottom: "10px",
-              width: "100%",
-              boxSizing: "border-box",
-              border: "2px solid #007bff",
-              borderRadius: "8px",
-              fontSize: "16px",
-              color: "#333",
-              outline: "none",
-              transition: "border-color 0.3s",
-            }}
-          />
-          <button
-            onClick={() => userName && password && onLogin()}
-            style={{
-              padding: "12px 25px",
-              backgroundColor: "#007bff",
-              color: "#fff",
-              border: "none",
-              borderRadius: "5px",
-              cursor: "pointer",
-            }}
-          >
-            Submit
-          </button>
-        </div>
-      )}
+              Submit
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

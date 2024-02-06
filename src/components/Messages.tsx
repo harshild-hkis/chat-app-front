@@ -8,7 +8,15 @@ interface Props {
 
 const Messages = ({ messages, joinedRoom }: Props) => {
   return (
-    <div style={{ marginBottom: "20px" }}>
+    <div
+      style={{
+        marginBottom: "20px",
+        height: "70vh",
+        overflow: "auto",
+        paddingRight: "20px",
+      }}
+      id="messageContainer"
+    >
       {messages.map((item, index) => (
         <div
           key={index}
