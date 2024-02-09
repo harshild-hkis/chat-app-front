@@ -11,3 +11,22 @@
   margin: 0;
   padding: 0;
 }
+
+@keyframes typing {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.5;
+    transform: translateY(-5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.typingAnimation {
+  animation: typing 0.5s infinite;
+}

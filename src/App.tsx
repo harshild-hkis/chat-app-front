@@ -14,8 +14,11 @@ const App = () => {
   const [password, setPassword] = useState("");
   const [listOfUser, setListOfUser] = useState<ListOfUser[]>([]);
   const [sender, setSender] = useState({ _id: "", userName: "" });
+  const [senderIsTyping, setSenderIsTyping] = useState(false);
   const [error, setError] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(
+    localStorage.getItem("user_id") ?? null
+  );
   const [messageContent, setMessageContent] = useState("");
   const [joinedRoom, setJoinedRoom] = useState(false);
 
@@ -39,12 +42,46 @@ const App = () => {
         socket.off(`message_received_${userId}`, onMessageReceive);
       };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userName, userId]);
 
+  useEffect(() => {
+    if (senderIsTyping) {
+      const timer = setTimeout(() => {
+        setSenderIsTyping(false);
+      }, 5000);
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+  }, [senderIsTyping]);
+
+  /**
+   * Event for typing start and end
+   */
+  useEffect(() => {
+    const onstartTyping = () => {
+      setSenderIsTyping(true);
+    };
+    const onEndTyping = () => setSenderIsTyping(false);
+
+    if (userId && sender._id) {
+      socket.on(`started_typing_${sender._id}_${userId}`, onstartTyping);
+      socket.on(`ended_typing_${sender._id}_${userId}`, onEndTyping);
+      return () => {
+        socket.off(`started_typing_${sender._id}_${userId}`, onstartTyping);
+        socket.off(`ended_typing_${sender._id}_${userId}`, onEndTyping);
+      };
+    }
+  }, [userId, sender._id]);
+
+  useEffect(() => {
+    if (userId) getUserList(userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   const setMessage = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setMessageContent(e.target.value);
-    },
+    (e: string) => setMessageContent(e),
     [setMessageContent]
   );
 
@@ -92,21 +129,43 @@ const App = () => {
     ]
   );
 
-  const onLogin = useCallback(async () => {
-    const apiResponse = await axios.post(`${BACKEND}/sign`, {
-      userName,
-      password,
-    });
+  const startTyping = useCallback(
+    (e: string) => {
+      setMessage(e);
+      if (userId && sender._id) {
+        socket.emit(e ? "start_typing" : "end_typing", {
+          to: sender._id,
+          from: userId,
+        });
+      }
+    },
+    [setMessage, userId, sender._id]
+  );
 
-    if (apiResponse.data?.userId) {
-      const userId = apiResponse.data.userId;
-      setUserId(userId);
-      const getResponse = await axios.get(`${BACKEND}/user-list/${userId}`);
+  const getUserList = useCallback(async (id: string) => {
+    const getResponse = await axios.get(`${BACKEND}/user-list/${id}`);
 
-      setListOfUser(getResponse?.data?.data ?? []);
-      setError("");
-    } else setError(apiResponse.data.message || "Something want wrong");
-  }, [password, userName]);
+    setListOfUser(getResponse?.data?.data ?? []);
+  }, []);
+
+  const onLogin = useCallback(
+    async (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const apiResponse = await axios.post(`${BACKEND}/sign`, {
+        userName,
+        password,
+      });
+
+      if (apiResponse.data?.userId) {
+        const userId = apiResponse.data.userId;
+        localStorage.setItem("user_id", userId);
+        setUserId(userId);
+        getUserList(userId);
+        setError("");
+      } else setError(apiResponse.data.message || "Something want wrong");
+    },
+    [userName, password, getUserList]
+  );
 
   const onSelectSender = useCallback(
     async (payload: string) => {
@@ -135,7 +194,7 @@ const App = () => {
         style={{
           fontFamily: "Arial, sans-serif",
           padding: "20px",
-          flex: "1", // Occupy remaining vertical space
+          flex: "1",
         }}
       >
         <h1
@@ -160,7 +219,7 @@ const App = () => {
             >
               <strong>Joined room chat with random person</strong>
               <small style={{ display: "block", color: "#666" }}>
-                (Don't worry your chat will not save in room mode)
+                (End-to-End encrypted)
               </small>
             </div>
           ) : (
@@ -182,7 +241,7 @@ const App = () => {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center", // Center horizontally
+                  justifyContent: "center",
                   marginBottom: "20px",
                 }}
               >
@@ -192,7 +251,7 @@ const App = () => {
                   style={{
                     padding: "8px",
                     marginRight: "10px",
-                    width: "150px", // Reduced width
+                    width: "150px",
                     fontSize: "16px",
                   }}
                 >
@@ -235,53 +294,61 @@ const App = () => {
                 </button>
               </div>
             ) : (
-              <form
-                style={{
-                  marginBottom: "20px",
-                  display: "flex",
-                  alignItems: "center",
-                  position: "absolute",
-                  bottom: 0,
-                  width: "95%",
-                }}
-                className="messageContainer"
-                onSubmit={sendMessage}
-              >
-                <input
-                  name="message"
-                  placeholder="Enter message"
-                  onChange={(e) => setMessage(e)}
-                  value={messageContent}
-                  style={{
-                    padding: "10px",
-                    marginRight: "10px",
-                    flex: "1",
-                    border: "2px solid #007bff",
-                    borderRadius: "8px",
-                    fontSize: "16px",
-                    color: "#333",
-                    outline: "none",
-                    transition: "border-color 0.3s",
-                  }}
-                />
-                <button
-                  type="submit"
-                  style={{
-                    padding: "12px 25px",
-                    backgroundColor: "#007bff",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "5px",
-                    cursor: "pointer",
-                  }}
+              <>
+                <div
+                  className={senderIsTyping ? "typingAnimation" : ""}
+                  style={{ marginRight: "10px" }}
                 >
-                  Submit
-                </button>
-              </form>
+                  {senderIsTyping ? `${sender.userName} is typing...` : null}
+                </div>
+                <form
+                  style={{
+                    marginBottom: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    position: "absolute",
+                    bottom: 0,
+                    width: "95%",
+                  }}
+                  className="messageContainer"
+                  onSubmit={sendMessage}
+                >
+                  <input
+                    name="message"
+                    placeholder="Enter message"
+                    onChange={(e) => startTyping(e.target.value)}
+                    value={messageContent}
+                    style={{
+                      padding: "10px",
+                      marginRight: "10px",
+                      flex: "1",
+                      border: "2px solid #007bff",
+                      borderRadius: "8px",
+                      fontSize: "16px",
+                      color: "#333",
+                      outline: "none",
+                      transition: "border-color 0.3s",
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    style={{
+                      padding: "12px 25px",
+                      backgroundColor: "#007bff",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "5px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Submit
+                  </button>
+                </form>
+              </>
             )}
           </>
         ) : (
-          <div>
+          <form onSubmit={(e) => userName && password && onLogin(e)}>
             <input
               autoFocus
               name="userName"
@@ -321,7 +388,7 @@ const App = () => {
               }}
             />
             <button
-              onClick={() => userName && password && onLogin()}
+              type="submit"
               style={{
                 padding: "12px 25px",
                 backgroundColor: "#007bff",
@@ -333,7 +400,7 @@ const App = () => {
             >
               Submit
             </button>
-          </div>
+          </form>
         )}
       </div>
     </div>
