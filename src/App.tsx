@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 import axios from "axios";
 import { ListOfUser, Message } from "./utils/interface";
@@ -7,12 +7,27 @@ import Messages from "./components/Messages";
 
 const socket = io(BACKEND);
 
+const backgroundColors = [
+  "#4caf50", // Green
+  "#ffeb3b", // Yellow
+  "#00bcd4", // Cyan
+  "#ff9800", // Orange
+  "#e91e63", // Pink
+  "#009688", // Teal
+  "#64dd17", // Light Green
+  "#ffca28", // Amber
+  "#ff4081", // Pink Accent
+];
+
 const App = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [userName, setUserName] = useState("");
+  const [userName, setUserName] = useState(
+    localStorage.getItem("userName") ?? ""
+  );
   const [password, setPassword] = useState("");
   const [listOfUser, setListOfUser] = useState<ListOfUser[]>([]);
+  const [roomJoiners, setRoomJoiners] = useState<string[]>([]);
   const [sender, setSender] = useState({ _id: "", userName: "" });
   const [senderIsTyping, setSenderIsTyping] = useState(false);
   const [error, setError] = useState("");
@@ -21,6 +36,11 @@ const App = () => {
   );
   const [messageContent, setMessageContent] = useState("");
   const [joinedRoom, setJoinedRoom] = useState(false);
+
+  const chatColor = useMemo(
+    () => backgroundColors[Math.floor(Math.random() * backgroundColors.length)],
+    []
+  );
 
   useEffect(() => {
     const onConnect = () => setIsConnected(true);
@@ -37,6 +57,8 @@ const App = () => {
       socket.on(`message_received_${userId}`, onMessageReceive);
       socket.on("disconnect", onDisconnect);
       return () => {
+        socket.emit("on_left_room", userName);
+
         socket.off("connect", onConnect);
         socket.off("disconnect", onDisconnect);
         socket.off(`message_received_${userId}`, onMessageReceive);
@@ -75,6 +97,22 @@ const App = () => {
     }
   }, [userId, sender._id]);
 
+  /**
+   * Event for room
+   */
+  useEffect(() => {
+    if (joinedRoom) {
+      const onJoin = (payload: string[]) =>
+        setRoomJoiners(payload.filter((name) => name !== userName));
+
+      socket.on("update_join_array", onJoin);
+      return () => {
+        socket.off("update_join_array", onJoin);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joinedRoom]);
+
   useEffect(() => {
     if (userId) getUserList(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,6 +148,7 @@ const App = () => {
           from: userId,
           to: sender._id ?? null,
           sendAll: joinedRoom,
+          ...(joinedRoom ? { bgColor: chatColor } : {}),
         };
         setMessages((pre) => [...pre, { ...payload, sendByYou: true }]);
         socket.emit("send_message", payload);
@@ -126,6 +165,7 @@ const App = () => {
       joinedRoom,
       scrollTopBottomForMessages,
       setMessages,
+      chatColor,
     ]
   );
 
@@ -159,6 +199,7 @@ const App = () => {
       if (apiResponse.data?.userId) {
         const userId = apiResponse.data.userId;
         localStorage.setItem("user_id", userId);
+        localStorage.setItem("userName", userName);
         setUserId(userId);
         getUserList(userId);
         setError("");
@@ -180,6 +221,11 @@ const App = () => {
     },
     [userId, listOfUser, scrollTopBottomForMessages]
   );
+
+  const onJoinRoom = useCallback(() => {
+    setJoinedRoom(true);
+    socket.emit("on_join_room", userName);
+  }, [userName]);
 
   return (
     <div
@@ -217,7 +263,10 @@ const App = () => {
                 marginBottom: "10px",
               }}
             >
-              <strong>Joined room chat with random person</strong>
+              <strong>
+                Joined room chat with{" "}
+                {roomJoiners?.join(",") || "random person"}
+              </strong>
               <small style={{ display: "block", color: "#666" }}>
                 (End-to-End encrypted)
               </small>
@@ -280,7 +329,7 @@ const App = () => {
                   OR
                 </div>
                 <button
-                  onClick={() => setJoinedRoom(true)}
+                  onClick={onJoinRoom}
                   style={{
                     padding: "10px 20px",
                     backgroundColor: "#007bff",

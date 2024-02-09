@@ -4,9 +4,14 @@ import "./index.css";
 interface Props {
   messages: Message[];
   joinedRoom: boolean;
+  backgroundColor?: string;
 }
 
-const Messages = ({ messages, joinedRoom }: Props) => {
+const Messages = ({
+  messages,
+  joinedRoom,
+  backgroundColor = "#4caf50",
+}: Props) => {
   return (
     <div
       style={{
@@ -29,7 +34,11 @@ const Messages = ({ messages, joinedRoom }: Props) => {
         >
           <div
             style={{
-              backgroundColor: item.sendByYou ? "#007bff" : "#4caf50",
+              backgroundColor: item.sendByYou
+                ? "#007bff"
+                : joinedRoom
+                ? item.bgColor
+                : backgroundColor,
               color: item.sendByYou ? "#fff" : "#000",
               borderRadius: "5px",
               padding: "10px 15px",

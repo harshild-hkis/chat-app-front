@@ -3,10 +3,10 @@ export interface Message {
   to: string;
   message: string;
   sendByYou?: boolean;
+  bgColor?: string;
 }
 
 export interface ListOfUser {
-    userName: string;
-    _id: string;
-  }
-  
+  userName: string;
+  _id: string;
+}
